@@ -1,0 +1,531 @@
+---
+title: "Untitled"
+author: '2'
+date: "2026-05-08"
+output: html_document
+---
+
+```{r}
+# Código R: Modelos logísticos NSUM + métricas + exportación a Excel
+
+# =========================================================
+# LIBRERÍAS
+# =========================================================
+
+library(dplyr)
+library(caret)
+library(pROC)
+library(openxlsx)
+
+# =========================================================
+# COPIA DE BASE
+# =========================================================
+
+bbdd <- cuidansum_data_netq_anonymized_filtered
+
+# =========================================================
+# ASEGURAR FACTORES
+# =========================================================
+
+bbdd$Gender <- as.factor(bbdd$Gender)
+
+# =========================================================
+# VARIABLES BINARIAS DIRECTAS
+# =========================================================
+
+# Q45
+bbdd$Q45_bin <- ifelse(
+  bbdd$Q45 %in% c(
+    "Sí, he usado la reducción de jornada y la excedencia (en el pasado o actualmente)",
+    "Sí, he usado la reducción de jornada (en el pasado o actualmente)",
+    "Sí, he usado la excedencia (en el pasado o actualmente)",
+    "Sí, he trabajado a tiempo parcial para facilitar la conciliación (en el pasado o actualmente)"
+  ),
+  1,
+  0
+)
+
+# Q47
+bbdd$Q47_bin= bbdd$Q47_si.conciliar
+
+
+# Q48
+bbdd$Q48_bin <- ifelse(
+  bbdd$Q48 == "Nunca",
+  0,
+  1
+)
+
+# Q52
+bbdd$Q52_bin <- ifelse(
+  bbdd$Q52 == "No",
+  0,
+  1
+)
+
+# Q53
+bbdd$Q53_bin <- ifelse(
+  bbdd$Q53 == "No",
+  0,
+  1
+)
+
+# Q54
+bbdd$Q54_bin <- ifelse(
+  bbdd$Q54 == "Equitativo",
+  1,
+  0
+)
+
+# Q59
+bbdd$Q59_bin <- ifelse(
+  bbdd$Q59 == "Habitualmente, es un motivo de conflicto frecuente en casa",
+  1,
+  0
+)
+
+# Q61
+bbdd$Q61_bin <- ifelse(
+  bbdd$Q61 == "La mujer debería encargarse de la mayoría de las tareas",
+  1,
+  0
+)
+
+# =========================================================
+# LISTA DE MODELOS
+# =========================================================
+
+modelos <- list(
+  list(nombre = "Q17_Q45_Femeninoes",
+       data = bbdd %>% filter(Gender == "Femenino") %>% select(Q17, Q45_bin) %>% na.omit(),
+       y = "Q45_bin",
+       x = "Q17"),
+  
+  list(nombre = "Q18_Q45_Masculinos",
+       data = bbdd %>% filter(Gender == "Masculino") %>% select(Q18, Q45_bin) %>% na.omit(),
+       y = "Q45_bin",
+       x = "Q18"),
+  
+  list(nombre = "Q19_Q47_Femeninoes",
+       data = bbdd %>% filter(Gender == "Femenino") %>% select(Q19, Q47_bin) %>% na.omit(),
+       y = "Q47_bin",
+       x = "Q19"),
+  
+  list(nombre = "Q20_Q47_Masculinos",
+       data = bbdd %>% filter(Gender == "Masculino") %>% select(Q20, Q47_bin) %>% na.omit(),
+       y = "Q47_bin",
+       x = "Q20"),
+  
+  list(nombre = "Q21_Q48_Femeninoes",
+       data = bbdd %>% filter(Gender == "Femenino") %>% select(Q21, Q48_bin) %>% na.omit(),
+       y = "Q48_bin",
+       x = "Q21"),
+  
+  list(nombre = "Q22_Q48_Masculinos",
+       data = bbdd %>% filter(Gender == "Masculino") %>% select(Q22, Q48_bin) %>% na.omit(),
+       y = "Q48_bin",
+       x = "Q22"),
+  
+  list(nombre = "Q24_Q52",
+       data = bbdd %>% select(Q24, Q52_bin) %>% na.omit(),
+       y = "Q52_bin",
+       x = "Q24"),
+  
+  list(nombre = "Q25_Q53",
+       data = bbdd %>% select(Q25, Q53_bin) %>% na.omit(),
+       y = "Q53_bin",
+       x = "Q25"),
+  
+  list(nombre = "Q27_Q54",
+       data = bbdd %>% select(Q27, Q54_bin) %>% na.omit(),
+       y = "Q54_bin",
+       x = "Q27"),
+  
+  list(nombre = "Q28_Q54",
+       data = bbdd %>% select(Q28, Q54_bin) %>% na.omit(),
+       y = "Q54_bin",
+       x = "Q28"),
+  
+  list(nombre = "Q29_Q59",
+       data = bbdd %>% select(Q29, Q59_bin) %>% na.omit(),
+       y = "Q59_bin",
+       x = "Q29"),
+  
+  list(nombre = "Q33_Q61_Femeninoes",
+       data = bbdd %>% filter(Gender == "Femenino") %>% select(Q33, Q61_bin) %>% na.omit(),
+       y = "Q61_bin",
+       x = "Q33"),
+  
+  list(nombre = "Q34_Q61_Masculinos",
+       data = bbdd %>% filter(Gender == "Masculino") %>% select(Q34, Q61_bin) %>% na.omit(),
+       y = "Q61_bin",
+       x = "Q34")
+)
+
+# =========================================================
+# DATAFRAMES RESULTADOS
+# =========================================================
+
+coeficientes_df <- data.frame()
+metricas_df <- data.frame()
+confusion_df <- data.frame()
+
+# =========================================================
+# LOOP MODELOS
+# =========================================================
+
+for(i in 1:length(modelos)){
+  
+  modelo_info <- modelos[[i]]
+  
+  formula_modelo <- as.formula(
+    paste(modelo_info$y, "~", modelo_info$x)
+  )
+  
+# =====================================================
+# COMPROBAR CLASES
+# =====================================================
+
+real_values <- modelo_info$data[[modelo_info$y]]
+
+if(length(unique(real_values)) < 2){
+
+  cat("\n====================================\n")
+  cat("MODELO OMITIDO:", modelo_info$nombre, "\n")
+  cat("Solo existe una clase en la variable respuesta\n")
+  cat("====================================\n")
+
+  next
+}
+
+# =====================================================
+# MODELO
+# =====================================================
+
+modelo <- glm(
+  formula_modelo,
+  data = modelo_info$data,
+  family = binomial
+)
+
+# =====================================================
+# PREDICCIONES
+# =====================================================
+
+probs <- predict(modelo, type = "response")
+  
+  modelo <- glm(
+    formula_modelo,
+    data = modelo_info$data,
+    family = binomial
+  )
+  
+  # =====================================================
+  # COEFICIENTES
+  # =====================================================
+  
+  coef_modelo <- summary(modelo)$coefficients
+  
+  coef_df_temp <- data.frame(
+    Modelo = modelo_info$nombre,
+    Variable = rownames(coef_modelo),
+    Estimate = coef_modelo[,1],
+    Std_Error = coef_modelo[,2],
+    z_value = coef_modelo[,3],
+    p_value = coef_modelo[,4]
+  )
+  
+  coeficientes_df <- rbind(coeficientes_df, coef_df_temp)
+  
+  # =====================================================
+  # PREDICCIONES
+  # =====================================================
+  
+  probs <- predict(modelo, type = "response")
+  
+  pred <- ifelse(probs > 0.5, 1, 0)
+  
+  pred <- factor(pred, levels = c(0,1))
+  real <- factor(modelo_info$data[[modelo_info$y]], levels = c(0,1))
+  
+  # =====================================================
+  # MATRIZ CONFUSIÓN
+  # =====================================================
+  
+  conf <- confusionMatrix(pred, real, positive = "1")
+  
+  conf_table <- as.data.frame(conf$table)
+  conf_table$Modelo <- modelo_info$nombre
+  
+  confusion_df <- rbind(confusion_df, conf_table)
+  
+  # =====================================================
+  # ROC + AUC
+  # =====================================================
+  
+  if(length(unique(real)) < 2){
+
+  auc_val <- NA
+
+} else {
+
+  roc_obj <- roc(real, probs)
+  auc_val <- as.numeric(auc(roc_obj))
+}
+  auc_val <- as.numeric(auc(roc_obj))
+  
+  # =====================================================
+  # MÉTRICAS
+  # =====================================================
+  
+  metricas_temp <- data.frame(
+    Modelo = modelo_info$nombre,
+    Accuracy = conf$overall["Accuracy"],
+    Balanced_Accuracy = conf$byClass["Balanced Accuracy"],
+    Sensitivity = conf$byClass["Sensitivity"],
+    Specificity = conf$byClass["Specificity"],
+    F1 = conf$byClass["F1"],
+    Kappa = conf$overall["Kappa"],
+    AUC = auc_val,
+    AIC = AIC(modelo)
+  )
+  
+  metricas_df <- rbind(metricas_df, metricas_temp)
+  
+  # =====================================================
+  # IMPRIMIR RESULTADOS
+  # =====================================================
+  
+  cat("\n====================================\n")
+  cat("MODELO:", modelo_info$nombre, "\n")
+  cat("====================================\n")
+  
+  print(summary(modelo))
+  
+  cat("\nMATRIZ DE CONFUSIÓN\n")
+  print(conf$table)
+  
+  cat("\nAUC:\n")
+  print(auc_val)
+  
+  cat("\nBALANCED ACCURACY:\n")
+  print(conf$byClass["Balanced Accuracy"])
+}
+
+# =========================================================
+# EXPORTAR A EXCEL
+# =========================================================
+
+wb <- createWorkbook()
+
+addWorksheet(wb, "Coeficientes")
+writeData(wb, "Coeficientes", coeficientes_df)
+
+addWorksheet(wb, "Metricas")
+writeData(wb, "Metricas", metricas_df)
+
+addWorksheet(wb, "Matrices_Confusion")
+writeData(wb, "Matrices_Confusion", confusion_df)
+
+saveWorkbook(
+  wb,
+  file = "resultados_modelos_logisticos.xlsx",
+  overwrite = TRUE
+)
+
+# =========================================================
+# RESULTADOS FINALES
+# =========================================================
+
+coeficientes_df
+metricas_df
+confusion_df
+
+```
+
+```{r}
+# =========================================================
+# LIBRERÍAS
+# =========================================================
+
+library(ggplot2)
+
+# =========================================================
+# BOXPLOTS USANDO LA LISTA 'modelos'
+# =========================================================
+
+for(i in 1:length(modelos)){
+
+  modelo_info <- modelos[[i]]
+
+  datos <- modelo_info$data
+  xvar <- modelo_info$x
+  yvar <- modelo_info$y
+
+  # pasar respuesta a factor
+  datos[[yvar]] <- as.factor(datos[[yvar]])
+
+  # =====================================================
+  # BOXPLOT
+  # =====================================================
+
+p <- ggplot(
+  datos,
+  aes_string(
+    x = yvar,
+    y = xvar,
+    fill = yvar
+  )
+) +
+
+  # =====================================================
+  # BOXPLOT
+  # =====================================================
+
+  geom_boxplot(
+    width = 0.55,
+    alpha = 0.9,
+    linewidth = 0.7,
+    outlier.shape = 21,
+    outlier.size = 2.5,
+    outlier.stroke = 0.3,
+    color = "gray25"
+  ) +
+
+  # =====================================================
+  # MEDIA
+  # =====================================================
+
+  stat_summary(
+    fun = mean,
+    geom = "point",
+    shape = 18,
+    size = 3,
+    color = "#08306B"
+  ) +
+
+  # =====================================================
+  # COLORES PROFESIONALES
+  # =====================================================
+
+  scale_fill_manual(
+    values = c(
+      "#BDD7E7",
+      "#3182BD"
+    )
+  ) +
+
+  # =====================================================
+  # ETIQUETAS ELEGANTES
+  # =====================================================
+
+  scale_x_discrete(
+    labels = c(
+      "0" = "No",
+      "1" = "Sí"
+    )
+  ) +
+
+  # =====================================================
+  # TÍTULOS
+  # =====================================================
+
+  labs(
+    title = paste("Distribución de", xvar),
+    subtitle = paste(
+      "Comparación según la respuesta directa:",
+      yvar
+    ),
+    x = "Respuesta directa",
+    y = "Número de contactos reportados"
+  ) +
+
+  # =====================================================
+  # TEMA TFG
+  # =====================================================
+
+  theme_classic(base_size = 14) +
+
+  theme(
+
+    # títulos
+    plot.title = element_text(
+      face = "bold",
+      size = 17,
+      hjust = 0.5,
+      margin = ggplot2::margin(b = 8)
+    ),
+
+    plot.subtitle = element_text(
+      size = 11,
+      color = "gray35",
+      hjust = 0.5,
+      margin = ggplot2::margin(b = 15)
+    ),
+
+    # ejes
+    axis.title = element_text(
+      face = "bold",
+      size = 13
+    ),
+
+    axis.text = element_text(
+      size = 11,
+      color = "gray20"
+    ),
+
+    # fondo limpio
+    panel.border = element_blank(),
+
+    # grid horizontal suave
+    panel.grid.major.y = element_line(
+      color = "gray90",
+      linewidth = 0.3
+    ),
+
+    panel.grid.minor = element_blank(),
+
+    # quitar leyenda
+    legend.position = "none",
+
+    # márgenes
+    plot.margin = ggplot2::margin(
+      15, 15, 15, 15
+    )
+  )
+
+print(p)
+
+  # =====================================================
+  # GUARDAR
+  # =====================================================
+dir.create("figuras", showWarnings = FALSE)
+ggsave(
+  filename = file.path(
+    "figuras",
+    paste0(modelo_info$nombre, ".pdf")
+  ),
+  plot = p,
+  width = 7,
+  height = 5
+)
+}
+```
+```{r}
+files <- list.files("figuras", pattern = "*.pdf")
+
+latex_code <- sapply(files, function(f){
+
+  paste0(
+"\\begin{figure}[H]
+\\centering
+\\includegraphics[width=0.75\\linewidth]{figuras/", f, "}
+\\caption{", gsub(".pdf","",f), "}
+\\end{figure}\n"
+  )
+
+})
+
+cat(latex_code, file = "figuras.tex")
+```
+

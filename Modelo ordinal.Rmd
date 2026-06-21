@@ -1,0 +1,751 @@
+---
+title: "Untitled"
+author: '2'
+date: "2026-04-22"
+output: html_document
+---
+
+```{r}
+library(MASS)
+library(ggplot2)
+```
+
+Relaciones en la bisectriz:
+```{r}
+bbdd21vs48 <- data.frame(
+  Q21 = cuidansum_data_netq_anonymized_filtered$Q21,
+  Q48 = cuidansum_data_netq_anonymized_filtered$Q48
+)
+bbdd21vs48$Q48_factor <- factor(
+  bbdd21vs48$Q48,
+  levels = c("Nunca", "Ocasionalmente", "Frecuentemente", "Siempre"),
+  ordered = TRUE
+)
+```
+```{r}
+library(ggplot2)
+
+ggplot(bbdd21vs48, aes(x = Q48_factor, y = Q21)) +
+  
+  geom_boxplot(fill = "#4C78A8", alpha = 0.75) +
+  
+  labs(
+    x = "Problemas laborales (Q48, ordinal)",
+    y = "Casos observados en la red (Q21)"
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+```
+
+Estimación modelo ordinal:
+```{r}
+modelo_ordinal <- polr(Q48_factor ~ Q21,
+                       data = bbdd21vs48,
+                       Hess = TRUE)
+summary(modelo_ordinal)
+
+ctable <- coef(summary(modelo_ordinal))
+p_values <- pnorm(abs(ctable[, "t value"]), lower.tail = FALSE) * 2
+ctable <- cbind(ctable, "p value" = p_values)
+ctable
+exp(coef(modelo_ordinal))
+```
+Error ordinal:
+```{r}
+real_num <- as.numeric(bbdd21vs48$Q48_factor)
+pred_num <- as.numeric(pred)
+
+MAE <- mean(abs(real_num - pred_num))
+MAE
+
+RMSE <- sqrt(mean((real_num - pred_num)^2))
+RMSE
+
+AIC(modelo_ordinal)
+```
+
+
+
+Relaciones ecima de la bisectriz:
+```{r}
+bbdd17vs45 <- data.frame(
+  Q17 = cuidansum_data_netq_anonymized_filtered$Q17,
+  Q45 = cuidansum_data_netq_anonymized_filtered$Q45
+)
+bbdd17vs45$Q45_factor <- factor(
+  bbdd17vs45$Q45,
+  levels = c("Sí, he usado la reducción de jornada y la excedencia (en el pasado o actualmente)", "Sí, he usado la reducción de jornada (en el pasado o actualmente)", "Sí, he usado la excedencia (en el pasado o actualmente)", "Sí, he trabajado a tiempo parcial para facilitar la conciliación (en el pasado o
+actualmente)", "No, nunca las he pedido", "No, las solicité pero no me las concedieron"),
+  ordered = TRUE
+)
+unique(cuidansum_data_netq_anonymized_filtered$Q45)
+```
+```{r}
+bbdd17vs45=na.exclude(bbdd17vs45)
+ggplot(bbdd17vs45, aes(x = Q45_factor, y = Q17)) +
+  
+  geom_boxplot(fill = "#4C78A8", alpha = 0.75) +
+  
+  labs(
+    x = "Q45: problemas laborales",
+    y = "Casos observados (Q17)"
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 4),
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(10, 10, 20, 10)
+  )
+```
+Estimación modelo multinomial:
+```{r}
+library(nnet)
+modelo_multinom <- multinom(Q45_factor ~ Q17, data = bbdd17vs45)
+
+# Coeficientes y errores
+summary_m <- summary(modelo_multinom)
+coef_mat <- summary_m$coefficients
+se_mat   <- summary_m$standard.errors
+
+# z y p-values
+z_mat <- coef_mat / se_mat
+p_mat <- 2 * (1 - pnorm(abs(z_mat)))
+
+# Odds Ratios
+OR_mat <- exp(coef_mat)
+
+# Convertir a formato 
+library(tidyr)
+library(dplyr)
+
+tabla_multinom <- as.data.frame(coef_mat) %>%
+  tibble::rownames_to_column("Categoria") %>%
+  pivot_longer(-Categoria, names_to = "Variable", values_to = "Coeficiente") %>%
+  
+  left_join(
+    as.data.frame(se_mat) %>%
+      tibble::rownames_to_column("Categoria") %>%
+      pivot_longer(-Categoria, names_to = "Variable", values_to = "SE"),
+    by = c("Categoria", "Variable")
+  ) %>%
+  
+  left_join(
+    as.data.frame(p_mat) %>%
+      tibble::rownames_to_column("Categoria") %>%
+      pivot_longer(-Categoria, names_to = "Variable", values_to = "p_value"),
+    by = c("Categoria", "Variable")
+  ) %>%
+  
+  left_join(
+    as.data.frame(OR_mat) %>%
+      tibble::rownames_to_column("Categoria") %>%
+      pivot_longer(-Categoria, names_to = "Variable", values_to = "Odds_Ratio"),
+    by = c("Categoria", "Variable")
+  )
+
+tabla_multinom
+
+AIC(modelo_multinom)
+deviance(modelo_multinom)
+```
+Modelo binario:
+```{r}
+bbdd17vs45$y_bin <- ifelse(
+  bbdd17vs45$Q45 %in% c(
+    "Sí, he usado la reducción de jornada (en el pasado o actualmente)",
+    "Sí, he usado la excedencia (en el pasado o actualmente)",
+    "Sí, he trabajado a tiempo parcial para facilitar la conciliación (en el pasado o actualmente)",
+    "Sí, he usado la reducción de jornada y la excedencia (en el pasado o actualmente)", 
+    "No, las solicité pero no me las concedieron"
+  ),
+  1, 0
+)
+
+bbdd17vs45$y_bin <- factor(
+  bbdd17vs45$y_bin,
+  levels = c(0, 1),
+  labels = c("No", "Sí")
+)
+
+```
+```{r}
+ggplot(bbdd17vs45, aes(x = y_bin, y = Q17)) +
+  geom_boxplot(fill = "#4C78A8", alpha = 0.75) +
+  labs(
+    x = "Q45: problemas laborales",
+    y = "Casos observados (Q17)"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+
+```{r}
+modelo_bin <- glm(y_bin ~ Q17, data = bbdd17vs45, family = binomial)
+summary(modelo_bin)
+
+```
+
+
+Relaciones debajo de la bisectriz:
+```{r}
+bbdd18vs45 <- data.frame(
+  Q18 = cuidansum_data_netq_anonymized_filtered$Q18,
+  Q45 = cuidansum_data_netq_anonymized_filtered$Q45
+)
+bbdd18vs45$Q45_factor <- factor(
+  bbdd18vs45$Q45,
+  levels = c("Sí, he usado la reducción de jornada y la excedencia (en el pasado o actualmente)", "Sí, he usado la reducción de jornada (en el pasado o actualmente)", "Sí, he usado la excedencia (en el pasado o actualmente)", "Sí, he trabajado a tiempo parcial para facilitar la conciliación (en el pasado o
+actualmente)", "No, nunca las he pedido", "No, las solicité pero no me las concedieron"),
+  ordered = TRUE
+)
+unique(cuidansum_data_netq_anonymized_filtered$Q45)
+```
+```{r}
+bbdd18vs45=na.exclude(bbdd18vs45)
+ggplot(bbdd18vs45, aes(x = Q45_factor, y = Q18)) +
+  
+  geom_boxplot(fill = "#4C78A8", alpha = 0.75) +
+  
+  labs(
+    x = "Q45: problemas laborales",
+    y = "Casos observados (Q18)"
+  ) +
+  
+  theme_minimal(base_size = 13) +
+  
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 4),
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(10, 10, 20, 10)
+  )
+```
+Estimación modelo multinomial:
+```{r}
+library(nnet)
+modelo_multinom <- multinom(Q45_factor ~ Q18, data = bbdd18vs45)
+
+# Coeficientes y errores
+summary_m <- summary(modelo_multinom)
+coef_mat <- summary_m$coefficients
+se_mat   <- summary_m$standard.errors
+
+# z y p-values
+z_mat <- coef_mat / se_mat
+p_mat <- 2 * (1 - pnorm(abs(z_mat)))
+
+# Odds Ratios
+OR_mat <- exp(coef_mat)
+
+# Convertir a formato 
+library(tidyr)
+library(dplyr)
+
+tabla_multinom <- as.data.frame(coef_mat) %>%
+  tibble::rownames_to_column("Categoria") %>%
+  pivot_longer(-Categoria, names_to = "Variable", values_to = "Coeficiente") %>%
+  
+  left_join(
+    as.data.frame(se_mat) %>%
+      tibble::rownames_to_column("Categoria") %>%
+      pivot_longer(-Categoria, names_to = "Variable", values_to = "SE"),
+    by = c("Categoria", "Variable")
+  ) %>%
+  
+  left_join(
+    as.data.frame(p_mat) %>%
+      tibble::rownames_to_column("Categoria") %>%
+      pivot_longer(-Categoria, names_to = "Variable", values_to = "p_value"),
+    by = c("Categoria", "Variable")
+  ) %>%
+  
+  left_join(
+    as.data.frame(OR_mat) %>%
+      tibble::rownames_to_column("Categoria") %>%
+      pivot_longer(-Categoria, names_to = "Variable", values_to = "Odds_Ratio"),
+    by = c("Categoria", "Variable")
+  )
+
+tabla_multinom
+
+AIC(modelo_multinom)
+deviance(modelo_multinom)
+```
+Modelo binario:
+```{r}
+bbdd18vs45$y_bin <- ifelse(
+  bbdd18vs45$Q45 %in% c(
+    "Sí, he usado la reducción de jornada (en el pasado o actualmente)",
+    "Sí, he usado la excedencia (en el pasado o actualmente)",
+    "Sí, he trabajado a tiempo parcial para facilitar la conciliación (en el pasado o actualmente)",
+    "Sí, he usado la reducción de jornada y la excedencia (en el pasado o actualmente)", 
+    "No, las solicité pero no me las concedieron"
+  ),
+  1, 0
+)
+
+bbdd18vs45$y_bin <- factor(
+  bbdd18vs45$y_bin,
+  levels = c(0, 1),
+  labels = c("No", "Sí")
+)
+
+```
+```{r}
+ggplot(bbdd18vs45, aes(x = y_bin, y = Q18)) +
+  geom_boxplot(fill = "#4C78A8", alpha = 0.75) +
+  labs(
+    x = "Q45: problemas laborales",
+    y = "Casos observados (Q18)"
+  ) +
+  theme_minimal(base_size = 13)
+```
+```{r}
+modelo_bin <- glm(y_bin ~ Q18, data = bbdd18vs45, family = binomial)
+summary(modelo_bin)
+
+```
+---------------------------------------------------------------------------
+Predicción Q21 con todas las preguntas directas
+
+```{r}
+bbdd21vsall <- data.frame(
+  Q21 = cuidansum_data_netq_anonymized_filtered$Q21,
+  cuidansum_data_netq_anonymized_filtered[, 98:147]
+)
+
+#eliminar variables constantes
+bbdd21vsall <- bbdd21vsall[ ,-c(29,30)]
+names(bbdd21vsall_clean) <- make.names(names(bbdd21vsall_clean))
+```
+
+Modelo poisson
+```{r}
+modelo_poisson <- glm(Q21 ~ ., 
+                      family = poisson(link = "log"), 
+                      data = bbdd21vsall)
+
+summary(modelo_poisson)
+```
+Comprobar sobredispersion:
+```{r}
+dispersion <- sum(residuals(modelo_poisson, type = "pearson")^2) / 
+              modelo_poisson$df.residual
+
+dispersion
+```
+Hay sobredispersión clara
+Modelo binomial negativo para tratar la sobredispersion:
+```{r}
+library(MASS)
+
+modelo_nb <- glm.nb(Q21 ~ ., data = bbdd21vsall)
+
+summary(modelo_nb)
+```
+Theta ≈ 0.69 → hay sobredispersión clara (bien usar NB)
+pero:
+demasiadas variables
+muchas dummies
+posible colinealidad
+solucion:
+Selección de variables con Lasso para poisson:
+```{r}
+library(glmnet)
+
+names(bbdd21vsall) <- make.names(names(bbdd21vsall))
+X <- model.matrix(Q21 ~ ., bbdd21vsall)[, -1]
+lasso <- cv.glmnet(X, bbdd21vsall$Q21,
+                   family = "poisson",
+                   alpha = 1)
+
+coef(lasso, s = "lambda.min")
+
+vars <- rownames(coef(lasso, s = "lambda.min"))[
+  coef(lasso, s = "lambda.min")[,1] != 0
+]
+vars <- vars[vars != "(Intercept)"]
+X_sel <- X[, vars, drop = FALSE]
+```
+```{r}
+df_final <- as.data.frame(X_sel)
+df_final$Q21 <- bbdd21vsall$Q21
+library(MASS)
+modelo_final <- glm.nb(Q21 ~ ., data = df_final)
+summary(modelo_final)
+
+```
+
+Comparación de modelos:
+```{r}
+aic_values <- data.frame(
+  Modelo = c("Poisson", "Binomial Negativa", "NB + LASSO"),
+  AIC = c(
+    AIC(modelo_poisson),
+    AIC(modelo_nb),
+    AIC(modelo_final)
+  )
+)
+
+aic_values <- aic_values[order(aic_values$AIC), ]
+aic_values$Modelo <- factor(aic_values$Modelo, levels = aic_values$Modelo)
+
+ggplot(aic_values, aes(x = Modelo, y = AIC)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = round(AIC, 1)), vjust = -0.5) +
+  theme_minimal() +
+  labs(title = "Comparación de modelos mediante AIC",
+       y = "AIC",
+       x = "Modelo")
+```
+
+```{r}
+bic_values <- data.frame(
+  Modelo = c("Poisson", "Binomial Negativa", "NB + LASSO"),
+  BIC = c(
+    BIC(modelo_poisson),
+    BIC(modelo_nb),
+    BIC(modelo_final)
+  )
+)
+
+bic_values <- bic_values[order(bic_values$BIC), ]
+bic_values$Modelo <- factor(bic_values$Modelo, levels = bic_values$Modelo)
+
+ggplot(bic_values, aes(x = Modelo, y = BIC)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = round(BIC, 1)), vjust = -0.5) +
+  theme_minimal() +
+  labs(title = "Comparación de modelos mediante BIC",
+       y = "BIC",
+       x = "Modelo")
+```
+Train y test split:
+```{r}
+set.seed(123)
+
+idx <- sample(1:nrow(bbdd21vsall), 0.7 * nrow(bbdd21vsall))
+
+train <- bbdd21vsall[idx, ]
+test  <- bbdd21vsall[-idx, ]
+```
+```{r}
+library(glmnet)
+
+names(train) <- make.names(names(train))
+
+X_train <- model.matrix(Q21 ~ ., train)[, -1]
+
+lasso <- cv.glmnet(
+  X_train,
+  train$Q21,
+  family = "poisson",
+  alpha = 1
+)
+
+coef_lasso <- coef(lasso, s = "lambda.min")
+vars <- rownames(coef_lasso)[coef_lasso[,1] != 0]
+vars <- setdiff(vars, "(Intercept)")
+```
+
+```{r}
+X_train_sel <- X_train[, vars, drop = FALSE]
+
+df_train <- as.data.frame(X_train_sel)
+df_train$Q21 <- train$Q21
+```
+```{r}
+modelo_nb_lasso <- glm.nb(Q21 ~ ., data = df_train)
+```
+
+```{r}
+X_test <- model.matrix(Q21 ~ ., test)[, -1]
+X_test_sel <- X_test[, vars, drop = FALSE]
+
+df_test <- as.data.frame(X_test_sel)
+```
+
+```{r}
+pred <- predict(modelo_nb_lasso, newdata = df_test, type = "response")
+```
+
+```{r}
+MAE <- mean(abs(test$Q21 - pred))
+MAE
+mean(test$Q21)
+range(test$Q21)
+ggplot(test, aes(x=Q21))+
+  geom_histogram()
+```
+---------------------------------------------------------------------------
+
+Función completa:
+```{r}
+modelo_q48_lasso <- function(data, outcome_col, predictor_cols,
+                             train_ratio = 0.7,
+                             seed = 123) {
+  
+  set.seed(seed)
+  
+  # -----------------------------
+  # 1. Construir dataset
+  # -----------------------------
+  df <- data.frame(
+    y = data[[outcome_col]],
+    data[, predictor_cols]
+  )
+  
+  df <- na.omit(df)
+  names(df) <- make.names(names(df))
+  
+  # -----------------------------
+  # 2. Train / test split
+  # -----------------------------
+  idx <- sample(1:nrow(df), train_ratio * nrow(df))
+  
+  train <- df[idx, ]
+  test  <- df[-idx, ]
+  
+  # -----------------------------
+  # 3. LASSO multinomial
+  # -----------------------------
+  X_train <- model.matrix(y ~ ., train)[, -1]
+  
+  library(glmnet)
+  
+  lasso <- cv.glmnet(
+    X_train,
+    train$y,
+    family = "multinomial",
+    alpha = 1
+  )
+  
+  coef_lasso <- coef(lasso, s = "lambda.min")
+  
+  vars <- unique(unlist(lapply(coef_lasso, function(m) {
+    rownames(m)[m[,1] != 0]
+  })))
+  
+  vars <- setdiff(vars, "(Intercept)")
+  
+  # -----------------------------
+  # 4. Dataset reducido
+  # -----------------------------
+  X_train_sel <- X_train[, vars, drop = FALSE]
+  
+  df_train <- as.data.frame(X_train_sel)
+  df_train$y <- train$y
+  
+  # -----------------------------
+  # 5. Modelo final
+  # -----------------------------
+  library(nnet)
+  
+  modelo <- multinom(y ~ ., data = df_train, trace = FALSE)
+  
+  # -----------------------------
+  # 6. Predicción
+  # -----------------------------
+  X_test <- model.matrix(y ~ ., test)[, -1]
+  X_test_sel <- X_test[, vars, drop = FALSE]
+  
+  df_test <- as.data.frame(X_test_sel)
+  
+  pred <- predict(modelo, newdata = df_test, type = "class")
+  
+  accuracy <- mean(pred == test$y)
+  
+  # -----------------------------
+  # 7. Output
+  # -----------------------------
+  return(list(
+    modelo = modelo,
+    lasso = lasso,
+    variables = vars,
+    accuracy = accuracy,
+    predicciones = pred,
+    test_real = test$y
+  ))
+}
+```
+
+
+---------------------------------------------------------------------------
+Predicción Q48 con las preguntas indirectas
+```{r}
+bbdd48 <- data.frame(
+  Q48 = cuidansum_data_netq_anonymized_filtered$Q48,
+  cuidansum_data_netq_anonymized_filtered[, 68:89]
+)
+
+# limpiar NA
+bbdd48 <- na.omit(bbdd48)
+
+# asegurar nombres válidos
+names(bbdd48) <- make.names(names(bbdd48))
+
+#pasar a factor y:
+bbdd48$Q48= as.factor(bbdd48$Q48)
+```
+Análisis de la capacidad predictiva:
+
+Train, test
+```{r}
+set.seed(123)
+
+idx <- sample(1:nrow(bbdd48), 0.7 * nrow(bbdd48))
+
+train <- bbdd48[idx, ]
+test  <- bbdd48[-idx, ]
+```
+
+Random forest + selección de hiperparametros:
+Prueba con accuracy:
+```{r}
+library(randomForest)
+
+p <- ncol(train) - 1
+
+mtry_vals <- unique(round(seq(1, sqrt(p) * 2, length.out = 10)))
+
+best_acc <- 0
+best_mtry <- 1
+
+for (m in mtry_vals) {
+  
+  rf <- randomForest(
+    Q48 ~ .,
+    data = train,
+    ntree = 500,
+    mtry = m,
+    classwt = table(train$Q48)^-1
+  )
+  
+  pred <- predict(rf, test)
+  acc <- mean(pred == test$Q48)
+  
+  if (acc > best_acc) {
+    best_acc <- acc
+    best_mtry <- m
+  }
+}
+
+rf_final <- randomForest(
+  Q48 ~ .,
+  data = train,
+  ntree = 500,
+  mtry = best_mtry,
+  classwt = table(train$Q48)^-1,
+  importance = TRUE
+)
+
+pred_final <- predict(rf_final, test)
+library(caret)
+confusionMatrix(pred_final, test$Q48)
+```
+
+Prueba con kappa
+```{r}
+set.seed(123)
+
+idx <- createDataPartition(train$Q48, p = 0.8, list = FALSE)
+train2 <- train[idx, ]
+valid  <- train[-idx, ]
+
+library(randomForest)
+
+mtry_vals <- seq(1, 22, by = 2)
+
+best_kappa <- -Inf
+best_mtry <- NULL
+
+for (m in mtry_vals) {
+
+  rf <- randomForest(
+    Q48 ~ .,
+    data = train2,
+    mtry = m,
+    ntree = 300,
+    classwt = as.list(1 / table(train2$Q48))
+  )
+
+  pred <- predict(rf, valid)
+
+  kappa <- confusionMatrix(pred, valid$Q48)$overall["Kappa"]
+
+  if (kappa > best_kappa) {
+    best_kappa <- kappa
+    best_mtry <- m
+  }
+}
+
+rf_final <- randomForest(
+  Q48 ~ .,
+  data = train,
+  mtry = best_mtry,
+  ntree = 300,
+  classwt = as.list(1 / table(train$Q48))
+)
+pred_final <- predict(rf_final, test)
+
+confusionMatrix(pred_final, test$Q48)
+```
+Prueba con F1:
+```{r}
+f1_macro <- function(pred, truth) {
+  cm <- confusionMatrix(pred, truth)
+  f1 <- cm$byClass[, "F1"]
+  mean(f1, na.rm = TRUE)
+}
+library(randomForest)
+
+mtry_vals <- seq(1, 22, by = 2)
+
+best_f1 <- -Inf
+best_mtry <- NULL
+
+for (m in mtry_vals) {
+
+  rf <- randomForest(
+    Q48 ~ .,
+    data = train,
+    mtry = m,
+    ntree = 300,
+    classwt = as.list(1 / table(train$Q48))
+  )
+
+  pred <- predict(rf, valid)
+
+  score <- f1_macro(pred, valid$Q48)
+
+  if (score > best_f1) {
+    best_f1 <- score
+    best_mtry <- m
+  }
+}
+rf_final <- randomForest(
+  Q48 ~ .,
+  data = train,
+  mtry = best_mtry,
+  ntree = 300,
+  classwt = as.list(1 / table(train$Q48))
+)
+
+pred_final <- predict(rf_final, test)
+
+confusionMatrix(pred_final, test$Q48)
+
+f1_macro(pred_final, test$Q48)
+```
+
+
+

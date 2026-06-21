@@ -1,0 +1,205 @@
+---
+title: "Untitled"
+author: '2'
+date: "2026-05-17"
+output: html_document
+---
+```{r}
+data <- cuidansum_data_netq_anonymized_filtered
+
+Q15 <- data$Q15
+
+# pares de variables
+pairs <- list(
+  c("Q17","Q18"),
+  c("Q19","Q20"),
+  c("Q21","Q22"),
+  c("Q31","Q32"),
+  c("Q33","Q34"),
+  c("Q35","Q36"),
+  c("Q37","Q38"),
+  c("Q40","Q41")
+)
+
+results <- data.frame(
+  par = character(),
+  cor = numeric()
+)
+
+for (p in pairs) {
+  x <- data[[p[1]]] / Q15
+  y <- data[[p[2]]] / Q15
+  
+  results <- rbind(results, data.frame(
+    par = paste(p[1], p[2], sep = "-"),
+    cor = cor(x, y, method = "spearman", use = "complete.obs")
+  ))
+}
+
+results
+```
+```{r}
+library(ggplot2)
+library(patchwork)   # para combinar gráficos
+
+# Lista de variables
+vars <- c("Q17","Q18","Q19","Q20","Q21","Q22",
+          "Q31","Q32","Q33","Q34","Q35","Q36",
+          "Q37","Q38","Q40","Q41")
+
+qq_list <- list()
+hist_list <- list()
+
+for (v in vars) {
+  
+  new_name <- paste0(v, "_div_Q15")
+  
+  vec <- cuidansum_data_netq_anonymized_filtered[[v]] /
+         cuidansum_data_netq_anonymized_filtered$Q15
+  
+  # QQ-plot
+  qq_list[[new_name]] <- ggplot(data.frame(x = vec), aes(sample = x)) +
+    stat_qq(color = "steelblue") +
+    stat_qq_line(color = "red") +
+    ggtitle(paste("QQ-plot:", new_name)) +
+    theme_minimal()
+  
+  # Histograma
+  hist_list[[new_name]] <- ggplot(data.frame(x = vec), aes(x)) +
+    geom_histogram(aes(y = ..density..), bins = 20,
+                   fill = "skyblue", color = "white") +
+    geom_density(color = "red", linewidth = 1) +
+    ggtitle(paste("Histograma:", new_name)) +
+    theme_minimal()
+}
+
+# Combinar todos los QQ-plots en una sola imagen
+qq_grid <- wrap_plots(qq_list, ncol = 4)
+
+# Combinar todos los histogramas en una sola imagen
+hist_grid <- wrap_plots(hist_list, ncol = 4)
+
+# Mostrar ambos
+qq_grid
+hist_grid
+
+```
+```{r}
+library(ggplot2)
+library(patchwork)
+
+vars <- c("Q17","Q18","Q19","Q20","Q21","Q22",
+          "Q31","Q32","Q33","Q34","Q35","Q36",
+          "Q37","Q38","Q40","Q41")
+
+qq_list <- list()
+hist_list <- list()
+
+for (v in vars) {
+  
+  new_name <- paste0(v, "_div_Q15")
+  
+  vec <- cuidansum_data_netq_anonymized_filtered[[v]] /
+         cuidansum_data_netq_anonymized_filtered$Q15
+  
+  # QQ-plot con texto y líneas pequeñas
+  qq_list[[new_name]] <- ggplot(data.frame(x = vec), aes(sample = x)) +
+    stat_qq(color = "steelblue", size = 0.5) +
+    stat_qq_line(color = "red", linewidth = 0.3) +
+    ggtitle(paste("QQ:", new_name)) +
+    theme_minimal(base_size = 8) +
+    theme(plot.title = element_text(size = 8))
+  
+  # Histograma con densidad y líneas pequeñas
+  hist_list[[new_name]] <- ggplot(data.frame(x = vec), aes(x)) +
+    geom_histogram(aes(y = ..density..), bins = 20,
+                   fill = "skyblue", color = "white", linewidth = 0.2) +
+    geom_density(color = "red", linewidth = 0.3) +
+    ggtitle(paste("Hist:", new_name)) +
+    theme_minimal(base_size = 8) +
+    theme(plot.title = element_text(size = 8))
+}
+
+# Combinar todos los QQ-plots en una sola imagen
+qq_grid <- wrap_plots(qq_list, ncol = 4)
+
+# Combinar todos los histogramas en una sola imagen
+hist_grid <- wrap_plots(hist_list, ncol = 4)
+
+qq_grid
+hist_grid
+
+```
+
+
+
+```{r}
+data <- cuidansum_data_netq_anonymized_filtered
+Q15 <- data$Q15
+
+pairs <- list(
+  c("Q17","Q18"),
+  c("Q19","Q20"),
+  c("Q21","Q22"),
+  c("Q31","Q32"),
+  c("Q33","Q34"),
+  c("Q35","Q36"),
+  c("Q37","Q38"),
+  c("Q40","Q41")
+)
+
+labels <- c()
+
+cors <- numeric()
+
+for (p in pairs) {
+  x <- data[[p[1]]] / Q15
+  y <- data[[p[2]]] / Q15
+  
+  labels <- c(labels, paste0(p[1], "-", p[2]))
+  cors <- c(cors, cor(x, y, method="spearman", use="complete.obs"))
+}
+
+df <- data.frame(Pair = labels, Correlation = cors)
+
+library(ggplot2)
+
+ggplot(df, aes(x = Pair, y = Correlation)) +
+  geom_col(fill = "steelblue") +
+  ylim(-1,1) +
+  theme_minimal() +
+  coord_flip() +
+  labs(title = "Correlación Spearman por pares de variables",
+       x = "",
+       y = "Correlación")
+
+library(ggplot2)
+
+ggplot(df, aes(x = Pair, y = 1, fill = Correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(low="red", mid="white", high="blue", midpoint=0) +
+  theme_minimal() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks = element_blank()) +
+  labs(title="Mapa de correlaciones por pares")
+```
+```{r}
+par(mfrow=c(2,4))
+
+for (p in pairs) {
+  
+  x <- data[[p[1]]] / Q15
+  y <- data[[p[2]]] / Q15
+  
+  plot(x, y,
+       pch=19,
+       col=rgb(0,0,1,0.3),
+       main=paste(p[1], "-", p[2]),
+       xlab=p[1],
+       ylab=p[2])
+  
+  abline(lm(y ~ x), col="red", lwd=2)
+}
+```
+
+
