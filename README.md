@@ -16,7 +16,6 @@ Additionally, this project builds a robust comparative framework between traditi
 ### 1. NSUM Frequentist Estimation
 The implementation relies on frequentist models to estimate hidden subpopulation proportions. Specifically, we utilize the **Mean of Ratios (MoR)** estimator to evaluate specific caregiving and work-life balance indicators:
 **Mean of Ratios (MoR):** Equalizes the weight given to each individual in the sample, reducing the distortion caused by respondents with exceptionally large network sizes.
-$$\hat{N}_{MoR\_u} = N \cdot \frac{1}{n} \sum_{i=1}^{n} \frac{y_{iu}}{\hat{d}_i}$$
 
 ### 2. Statistical Inference, Correlations & Visualizations
 To validate the reliability of the NSUM estimates and uncover structural patterns, the analysis integrates rigorous statistical testing and custom data visualizations:
