@@ -2,7 +2,7 @@
 
 This repository contains the complete codebase, data processing pipelines, and predictive modeling framework developed for my Bachelor's Thesis (Trabajo Fin de Grado) in Statistics and Business at **Universidad Carlos III de Madrid (UC3M)**.
 
-## 📌 Project Overview
+##  Project Overview
 Traditional surveys measuring gender inequality in domestic tasks and caregiving workloads often suffer from **social desirability bias**, where respondents tend to over- or under-report behaviors to match socially accepted norms. This research leverages the **Network Scale-Up Method (NSUM)**—an indirect survey estimation technique—within the framework of the multidisciplinary research project **CuidaNSUM**. 
 
 Instead of asking respondents about their own personal routines, NSUM asks how many individuals within their personal network exhibit specific traits or behaviors. By mathematically adjusting these responses according to the estimated size of each respondent's personal network, we can infer subpopulation dimensions with significantly reduced bias.
@@ -11,7 +11,7 @@ Additionally, this project builds a robust comparative framework between traditi
 
 ---
 
-## 🛠️ Methodology & Statistical Models
+##  Methodology & Statistical Models
 
 ### 1. NSUM Frequentist Estimation
 The implementation relies on frequentist models to estimate hidden subpopulation proportions. Specifically, we utilize the **Mean of Ratios (MoR)** estimator to evaluate specific caregiving and work-life balance indicators:
